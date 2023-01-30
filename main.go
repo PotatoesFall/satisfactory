@@ -1,26 +1,36 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"sort"
 	"strconv"
 	"strings"
+
+	_ "embed"
 )
 
-func main() {
-	ads := getBuildInfo(AssemblyDirectorSystem, 4)
-	mfg := getBuildInfo(MagneticFieldGenerator, 4)
+/*
+TODO
+- make the system be able to check different recipe variants
+	- add weights for
+		- resource rarity (per resource)
+		- energy cost (don't forget miners/extractors)
+		- number of machines? (per machine) nice-to-haven
+- have the system account for by-products
+	- match by-product recipes and balance them perfectly (how?)
+	- nice-to-have: account for energy that can be produced with byproducts and deduct from total energy cost
+- allow choosing/locking certain recipes while letting others be optimized?
+*/
 
-	baseMaterials := make(map[Item]float64)
-	getBaseMaterials(baseMaterials, ads.Tree)
-	getBaseMaterials(baseMaterials, mfg.Tree)
-	data, _ := json.MarshalIndent(baseMaterials, "", "\t")
-	fmt.Println(string(data))
-	fmt.Println()
+//go:embed recipes.json
+var recipesJSON []byte
+
+func main() {
+	loadRecipes()
+
+	ads := getBuildInfo(ItemFlux{Item: AssemblyDirectorSystem, Flux: 4})
 
 	fmt.Println(ads)
-	fmt.Println(mfg)
 }
 
 type BuildInfo struct {
@@ -29,7 +39,7 @@ type BuildInfo struct {
 
 func (bi BuildInfo) String() string {
 	var buf strings.Builder
-	buf.WriteString(fmt.Sprintf("PRODUCTION STEPS FOR %s %s/min\n\n", fmtAmount(bi.Tree.Output.Flux), bi.Tree.Output.Item))
+	// buf.WriteString(fmt.Sprintf("PRODUCTION STEPS FOR %s %s/min\n\n", fmtAmount(bi.Tree.Output.Flux), bi.Tree.Output.Item))
 	baseMaterials := make(map[Item]float64)
 	getBaseMaterials(baseMaterials, bi.Tree)
 	buf.WriteString("Base Materials:\n")
@@ -47,24 +57,28 @@ func (bi BuildInfo) String() string {
 }
 
 func getBaseMaterials(materials map[Item]float64, node *TreeNode) {
-	if isBase(node.Output.Item) {
-		materials[node.Output.Item] += node.Output.Flux
-		return
-	}
+	for _, output := range node.Output {
+		if isBase(output.Item) {
+			materials[output.Item] += output.Flux
+			return
+		}
 
-	for _, input := range node.Inputs {
-		getBaseMaterials(materials, input)
+		for _, input := range node.Input {
+			getBaseMaterials(materials, input)
+		}
 	}
 }
 
 func printBuildTree(buf *strings.Builder, node *TreeNode, indentation int) {
-	prefix := '-'
-	if isBase(node.Output.Item) {
-		prefix = '■'
-	}
-	buf.WriteString(fmt.Sprintf("%s%c %s %s\n", strings.Repeat("\t", indentation), prefix, fmtAmount(node.Output.Flux), node.Output.Item))
-	for _, child := range node.Inputs {
-		printBuildTree(buf, child, indentation+1)
+	for _, output := range node.Output {
+		prefix := '-'
+		if isBase(output.Item) {
+			prefix = '■'
+		}
+		buf.WriteString(fmt.Sprintf("%s%c %s %s\n", strings.Repeat("\t", indentation), prefix, fmtAmount(output.Flux), output.Item))
+		for _, child := range node.Input {
+			printBuildTree(buf, child, indentation+1)
+		}
 	}
 }
 
@@ -74,16 +88,14 @@ type ItemFlux struct {
 }
 
 type TreeNode struct {
-	Output ItemFlux
-	Inputs []*TreeNode
+	Output []ItemFlux
+	Input  []*TreeNode
 }
 
-func getBuildInfo(item Item, amount float64) BuildInfo {
+func getBuildInfo(items ...ItemFlux) BuildInfo {
 	info := BuildInfo{
 		Tree: &TreeNode{
-			Output: ItemFlux{
-				item, amount,
-			},
+			Output: items,
 		},
 	}
 
@@ -93,20 +105,24 @@ func getBuildInfo(item Item, amount float64) BuildInfo {
 }
 
 func _getRequirements(node *TreeNode) {
-	recipe, ok := allRecipes[node.Output.Item]
-	if !ok {
-		panic(node.Output.Item)
-	}
-
-	for inItem, inRate := range recipe.Input {
-		totalInRate := node.Output.Flux * float64(inRate) / float64(recipe.Output[node.Output.Item])
-		child := &TreeNode{
-			Output: ItemFlux{inItem, totalInRate},
+	for _, output := range node.Output {
+		recipes := recipesByItem[output.Item]
+		if len(recipes) == 0 {
+			panic("No recipes found for " + output.Item)
 		}
-		node.Inputs = append(node.Inputs, child)
 
-		if !isBase(inItem) {
-			_getRequirements(child)
+		recipe := recipes[0] // TODO
+
+		for inItem, inRate := range recipe.Input {
+			totalInRate := output.Flux * float64(inRate) / float64(recipe.Output[output.Item])
+			child := &TreeNode{
+				Output: []ItemFlux{{inItem, totalInRate}},
+			}
+			node.Input = append(node.Input, child)
+
+			if !isBase(inItem) {
+				_getRequirements(child)
+			}
 		}
 	}
 }
