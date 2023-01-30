@@ -327,7 +327,6 @@
         "machine": "Assembler",
         "time": 60
     },
-    // HERE
     {
         "name": "Circuit Board Alt",
         "input": {
@@ -636,5 +635,61 @@
         },
         "machine": "",
         "time": 0
+    },
+    {
+        "name": "Screw",
+        "input": {
+            "Iron Rod": 1
+        },
+        "output": {
+            "Screw": 4
+        },
+        "machine": "Constructor",
+        "time": 6
+    },
+    {
+        "name": "Cast Screw",
+        "input": {
+            "Iron Ingot": 5
+        },
+        "output": {
+            "Screw": 20
+        },
+        "machine": "Constructor",
+        "time": 24
+    },
+    {
+        "name": "Steel Screw",
+        "input": {
+            "Steel Beam": 1
+        },
+        "output": {
+            "Screw": 52
+        },
+        "machine": "Constructor",
+        "time": 12
+    },
+    {
+        "name": "Compacted Coal",
+        "input": {
+            "Coal": 5,
+            "Sulfur": 5
+        },
+        "output": {
+            "Compacted Coal": 5
+        },
+        "machine": "Assembler",
+        "time": 12
+    },
+    {
+        "name": "Petroleum Coke",
+        "input": {
+            "Heavy Oil Residue": 4
+        },
+        "output": {
+            "Petroleum Coke": 12
+        },
+        "machine": "Refinery",
+        "time": 6
     }
 ]

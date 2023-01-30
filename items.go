@@ -3,12 +3,15 @@ package main
 type Item string
 
 const (
-	IronOre   Item = "Iron Ore"
-	CopperOre Item = "Copper Ore"
-	Limestone Item = "Limestone"
-	Water     Item = "Water"
-	Sulfur    Item = "Sulfur"
-	Coal      Item = "Coal"
+	IronOre     Item = "Iron Ore"
+	CopperOre   Item = "Copper Ore"
+	Limestone   Item = "Limestone"
+	Water       Item = "Water"
+	Sulfur      Item = "Sulfur"
+	Coal        Item = "Coal"
+	RawQuartz   Item = "Raw Quartz"
+	CateriumOre Item = "Caterium Ore"
+	CrudeOil    Item = "Crude Oil"
 
 	IronIngot                 Item = "Iron Ingot"
 	IronPlate                 Item = "Iron Plate"
@@ -42,9 +45,7 @@ const (
 	SteelIngot                Item = "Steel Ingot"
 	CateriumIngot             Item = "Caterium Ingot"
 	CrystalOscillator         Item = "Crystal Oscillator"
-	CateriumOre               Item = "Caterium Ore"
 	Silica                    Item = "Silica"
-	RawQuartz                 Item = "Raw Quartz"
 	QuartzCrystal             Item = "Quartz Crystal"
 	Rubber                    Item = "Rubber"
 	AluminumIngot             Item = "Aluminum Ingot"
@@ -52,7 +53,6 @@ const (
 	VersatileFramework        Item = "Versatile Framework"
 	SteelBeam                 Item = "Steel Beam"
 	PolymerResin              Item = "Polymer Resin"
-	CrudeOil                  Item = "Crude Oil"
 	HeavyOilResidue           Item = "Heavy Oil Residue"
 )
 
@@ -66,9 +66,12 @@ var rawItems = [...]Item{
 	CateriumOre,
 	RawQuartz,
 	CrudeOil,
+
+	// TODO remove
+	AluminumIngot,
 }
 
-func isRaw(i Item) bool {
+func (i Item) IsRaw() bool {
 	for _, raw := range rawItems {
 		if i == raw {
 			return true
@@ -76,8 +79,4 @@ func isRaw(i Item) bool {
 	}
 
 	return false
-}
-
-func isBase(i Item) bool {
-	return i == AluminumIngot || isRaw(i)
 }

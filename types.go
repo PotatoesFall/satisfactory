@@ -6,12 +6,12 @@ import (
 )
 
 type Recipe struct {
-	Name    string        `json:"name"`
-	Input   map[Item]uint `json:"input"`
-	Output  map[Item]uint `json:"output"`
-	Machine Machine       `json:"machine"`
-	Power   float64       `json:"power,omitempty"`
-	Time    int           `json:"time"` // seconds
+	Name    string       `json:"name"`
+	Input   map[Item]int `json:"input"`
+	Output  map[Item]int `json:"output"`
+	Machine Machine      `json:"machine"`
+	Power   float64      `json:"power,omitempty"`
+	Time    int          `json:"time"` // seconds
 }
 
 type Machine string // Refinery, Constructor, etc.
