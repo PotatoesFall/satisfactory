@@ -44,18 +44,18 @@ func main() {
 
 	weights := Weights{
 		Base: map[game.Item]float64{
-			"Iron Ore":     10,
-			"Copper Ore":   15,
-			"Limestone":    10,
-			"Water":        2,
-			"Sulfur":       35,
-			"Coal":         20,
-			"Raw Quartz":   30,
-			"Caterium Ore": 30,
-			"Crude Oil":    30,
-			"Nitrogen Gas": 35,
-			"Uranium":      40,
-			"Bauxite":      40,
+			"Iron Ore":     70380, // https://satisfactory.fandom.com/wiki/Resource_node
+			"Copper Ore":   28860 / 70380.0,
+			"Limestone":    52860 / 70380.0,
+			"Water":        0,
+			"Sulfur":       6840 / 70380.0,
+			"Coal":         30900 / 70380.0,
+			"Raw Quartz":   10500 / 70380.0,
+			"Caterium Ore": 11040 / 70380.0,
+			"Crude Oil":    9900 / 70380.0,
+			"Nitrogen Gas": 10000 / 70380.0, // guess, not on the wiki
+			"Uranium":      2100 / 70380.0,
+			"Bauxite":      9780 / 70380.0,
 
 			"Yellow Power Slug":      100_000,
 			"Purple Power Slug":      100_000,
@@ -81,9 +81,11 @@ func main() {
 	// fmt.Println(tree.Print(amount))
 
 	fmt.Println("\nRECIPES")
+	fmt.Println("|       | Building      | Power       | Recipe                            |")
+	fmt.Println("| ----- | --------------|-------------|-----------------------------------|")
 	for recipeName, count := range tree.RecipeCounts(amount) {
 		recipe := recipesByName[recipeName]
-		fmt.Printf("%6.2f %s (%s) %s MW\n", count, recipe.Machine, recipeName, fmtAmount(recipe.Power*count))
+		fmt.Printf("|%6.2fx|%15s|%10s MW|%35s|\n", count, recipe.Machine, fmtAmount(recipe.Power*count), recipeName)
 	}
 
 	// fmt.Println("\nRESOURCES")
