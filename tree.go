@@ -4,14 +4,18 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+
+	"github.com/PotatoesFall/satisfactory/game"
 )
 
-func getAllItemWeights(w Weights) map[Item]RecipeTree {
-	trees := make(map[Item]RecipeTree)
-	for _, item := range rawItems {
-		trees[item] = RecipeTree{
-			Item:   item,
-			Weight: w.Ore[item],
+func getAllItemWeights(w Weights) map[game.Item]*RecipeTree {
+	trees := make(map[game.Item]*RecipeTree)
+	for _, item := range allItems {
+		if weight, ok := w.Base[item]; ok {
+			trees[item] = &RecipeTree{
+				Item:   item,
+				Weight: weight,
+			}
 		}
 	}
 
@@ -25,26 +29,25 @@ func getAllItemWeights(w Weights) map[Item]RecipeTree {
 			}
 
 			var weight float64
-			inputs := make([]*RecipeTree, 0, len(recipe.Input))
-			for item, amount := range recipe.Input {
+			inputs := make([]*RecipeTree, 0, len(recipe.Ingredients))
+			for item, amount := range recipe.Ingredients {
 				// only check recipes with all known ingredients
 				tree, ok := trees[item]
 				if !ok {
-					// fmt.Println(item)
 					continue outer
 				}
 
 				weight += tree.Weight * float64(amount)
-				inputs = append(inputs, &tree)
+				inputs = append(inputs, tree)
 			}
 
-			for item, amount := range recipe.Output {
+			for item, amount := range recipe.Products {
 				outWeight := weight / float64(amount)
 				if tree, ok := trees[item]; ok && outWeight > tree.Weight {
 					continue
 				}
 
-				trees[item] = RecipeTree{
+				trees[item] = &RecipeTree{
 					Item:   item,
 					Weight: outWeight,
 					Recipe: recipe,
@@ -60,10 +63,10 @@ func getAllItemWeights(w Weights) map[Item]RecipeTree {
 }
 
 type RecipeTree struct {
-	Item   Item // flux is always one
+	Item   game.Item // flux is always one
 	Weight float64
 
-	Recipe *Recipe
+	Recipe *game.Recipe
 	Inputs []*RecipeTree
 }
 
@@ -86,21 +89,21 @@ func getRecipeCounts(recipes map[string]float64, tree *RecipeTree, flux float64)
 		return
 	}
 
-	recipes[tree.Recipe.Name] += flux / float64(tree.Recipe.Output[tree.Item])
+	recipes[tree.Recipe.Name] += flux / float64(tree.Recipe.Products[tree.Item])
 
 	for _, input := range tree.Inputs {
-		ratio := flux * float64(tree.Recipe.Input[input.Item]) / float64(tree.Recipe.Output[tree.Item])
+		ratio := flux * float64(tree.Recipe.Ingredients[input.Item]) / float64(tree.Recipe.Products[tree.Item])
 		getRecipeCounts(recipes, input, ratio)
 	}
 }
 
-func (rt *RecipeTree) Resources() map[Item]float64 {
+func (rt *RecipeTree) Resources() map[game.Item]float64 {
 	panic("not implemented")
 }
 
 func printBuildTree(buf *strings.Builder, tree *RecipeTree, flux float64, indentation int) {
 	prefix := '-'
-	if tree.Item.IsRaw() {
+	if _, ok := recipesByItem[tree.Item]; !ok {
 		prefix = '■'
 	}
 
@@ -111,7 +114,7 @@ func printBuildTree(buf *strings.Builder, tree *RecipeTree, flux float64, indent
 
 	buf.WriteString(fmt.Sprintf("%s%c %s %s (%s)\n", strings.Repeat("\t", indentation), prefix, fmtAmount(flux), tree.Item, recipeName))
 	for _, input := range tree.Inputs {
-		ratio := flux * float64(tree.Recipe.Input[input.Item]) / float64(tree.Recipe.Output[tree.Item])
+		ratio := flux * float64(tree.Recipe.Ingredients[input.Item]) / float64(tree.Recipe.Products[tree.Item])
 		printBuildTree(buf, input, ratio, indentation+1)
 	}
 }
