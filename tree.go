@@ -89,11 +89,13 @@ func getRecipeCounts(recipes map[string]float64, tree *RecipeTree, flux float64)
 		return
 	}
 
-	recipes[tree.Recipe.Name] += flux / float64(tree.Recipe.Products[tree.Item])
+	recipeCount := flux / float64(tree.Recipe.Products[tree.Item]) * tree.Recipe.Duration / 60
+	recipes[tree.Recipe.Name] += recipeCount
 
 	for _, input := range tree.Inputs {
-		ratio := flux * float64(tree.Recipe.Ingredients[input.Item]) / float64(tree.Recipe.Products[tree.Item])
-		getRecipeCounts(recipes, input, ratio)
+		ratio := float64(tree.Recipe.Ingredients[input.Item]) / float64(tree.Recipe.Products[tree.Item])
+		ingredientFlux := flux * ratio
+		getRecipeCounts(recipes, input, ingredientFlux)
 	}
 }
 
