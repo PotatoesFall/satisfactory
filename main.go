@@ -68,11 +68,6 @@ func main() {
 	fmt.Println(markdownTable(tree.RecipeCounts(amount), recipeOrder))
 
 	fmt.Printf("Total Power: %.2f MW", tree.Power(amount))
-
-	// fmt.Println("\nRESOURCES")
-	// for resource, count := range tree.Resources() {
-	// 	fmt.Printf("%.2f %s", count, resource)
-	// }
 }
 
 //go:embed config.example.toml
