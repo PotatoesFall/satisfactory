@@ -1,32 +1,48 @@
 package main
 
 import (
+	_ "embed"
 	"fmt"
 	"os"
 	"strconv"
 	"strings"
 
+	"github.com/BurntSushi/toml"
 	"github.com/PotatoesFall/satisfactory/game"
 	"github.com/erikgeiser/promptkit/selection"
 	"github.com/erikgeiser/promptkit/textinput"
+	"github.com/fbiville/markdown-table-formatter/pkg/markdown"
 	"golang.org/x/exp/slices"
 )
 
 /*
 TODO
-- add energy costs
-	- also for resource extraction
-- add building cost
-	- also for resoure extraction
+- allow for multiple inputs
 - account for byproducts
+	- combine with other recipes
+		- in ratios if possible, that would be dank
+		- idea, build macro recipes during the getRecipeWeights phase?
+			- a different kind of recipe
+			- contains a list of sub recipes
+			- no byproducts
+				- consumed in tree
+					- partially consumed? (then sink the rest)
+				- burned for energy
 	- generate energy if possible
 	- process and sink if liquid ?
+- add energy costs for resource extraction
+- add building cost
+	- also for resoure extraction
 */
 
-type Weights struct {
-	Base map[game.Item]float64
+type Config struct {
+	Weights Weights `toml:"Weights"`
+}
 
-	// Energy float64
+type Weights struct {
+	Resources map[game.Item]float64 `toml:"Resources"`
+
+	Power float64 `toml:"Power"`
 
 	// Machines map[string]float64
 }
@@ -40,57 +56,82 @@ var (
 
 func main() {
 	loadRecipes()
+	weights := readWeights()
 	item, amount := getItem()
 
-	weights := Weights{
-		Base: map[game.Item]float64{
-			"Iron Ore":     1, // https://satisfactory.fandom.com/wiki/Resource_node
-			"Copper Ore":   70380.0 / 28860,
-			"Limestone":    70380.0 / 52860,
-			"Water":        0,
-			"Sulfur":       70380.0 / 6840,
-			"Coal":         70380.0 / 30900,
-			"Raw Quartz":   70380.0 / 10500,
-			"Caterium Ore": 70380.0 / 11040,
-			"Crude Oil":    70380.0 / 9900,
-			"Nitrogen Gas": 70380.0 / 10000, // guess, not on the wiki
-			"Uranium":      70380.0 / 2100,
-			"Bauxite":      70380.0 / 9780,
-
-			"Yellow Power Slug":      100_000,
-			"Purple Power Slug":      100_000,
-			"Blue Power Slug":        100_000,
-			"Leaves":                 100_000,
-			"Wood":                   100_000,
-			"Plasma Spitter Remains": 100_000,
-			"Hog Remains":            100_000,
-			"Stinger Remains":        100_000,
-			"Mycelia":                100_000,
-			"FICSMAS Gift":           100_000,
-			"Flower Petals":          100_000,
-			"Hatcher Remains":        100_000,
-		},
-
-		// Energy: 1,
-	}
-
 	recipeTrees := getAllItemWeights(weights)
-
 	tree := recipeTrees[item]
 
 	// fmt.Println(tree.Print(amount))
 
-	fmt.Println("|       | Building     | Power        | Recipe                                |")
-	fmt.Println("| ----- | -------------|--------------|---------------------------------------|")
-	for recipeName, count := range tree.RecipeCounts(amount) {
-		recipe := recipesByName[recipeName]
-		fmt.Printf("|%6.2fx|%14s|%11s MW|%39s|\n", count, recipe.Machine, fmtAmount(recipe.Power*count), recipeName)
-	}
+	recipeOrder := tree.RecipeOrder()
+	fmt.Println(markdownTable(tree.RecipeCounts(amount), recipeOrder))
+
+	fmt.Printf("Total Power: %.2f MW", tree.Power(amount))
 
 	// fmt.Println("\nRESOURCES")
 	// for resource, count := range tree.Resources() {
 	// 	fmt.Printf("%.2f %s", count, resource)
 	// }
+}
+
+//go:embed config.example.toml
+var defaultConfig []byte
+
+func readWeights() Weights {
+	var config Config
+
+	configFile, err := os.ReadFile("config.toml")
+	if err != nil {
+		fmt.Println("No config.toml found, using default config.")
+		configFile = defaultConfig
+	}
+
+	if err := toml.Unmarshal(configFile, &config); err != nil {
+		panic(err)
+	}
+
+	return config.Weights
+}
+
+func markdownTable(recipeCounts map[string]float64, recipeOrder []string) string {
+	rows := make([][]string, 0, len(recipeCounts))
+	for _, recipeName := range recipeOrder {
+		count := recipeCounts[recipeName]
+		recipe, ok := recipesByName[recipeName]
+		if !ok {
+			rows = append(rows, []string{
+				"", "", "", recipeName + " (Resource)", fmt.Sprintf("%8.2f %25s", count, recipeName), "",
+			})
+			continue
+		}
+
+		var ingredients, products strings.Builder
+		for ingredient, inCount := range recipe.Ingredients {
+			ingredients.WriteString(fmt.Sprintf("%8.2f %25s", float64(inCount)*count*60/recipe.Duration, ingredient))
+		}
+		for product, prodCount := range recipe.Products {
+			products.WriteString(fmt.Sprintf("%8.2f %25s", float64(prodCount)*count*60/recipe.Duration, product))
+		}
+
+		rows = append(rows, []string{
+			fmt.Sprintf("%7.2f", count),
+			recipe.Machine,
+			fmt.Sprintf("%7.2f MW", recipe.Power*count),
+			recipeName,
+			products.String(),
+			ingredients.String(),
+		})
+	}
+
+	builder := markdown.NewTableFormatterBuilder().WithPrettyPrint()
+	f := builder.Build("", "Machine", "Power", "Recipe", "Products", "Ingredients")
+	table, err := f.Format(rows)
+	if err != nil {
+		panic(err)
+	}
+
+	return table
 }
 
 func getItem() (game.Item, float64) {

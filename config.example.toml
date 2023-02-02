@@ -1,0 +1,37 @@
+[Weights]
+Power = 30 # not implemented yet
+
+# Based on total bundance relative to Iron Ore
+# formula: 1000 * iron abundance / abundance
+# the default values are rounded, but floating point values are allowed.
+# see https://satisfactory.fandom.com/wiki/Resource_node
+# Collectible Resources are set at a very high weight
+# since we generally want to avoid them
+[Weights.Resources]
+"Water" = 0                           # Virtually infinite
+"Iron Ore" = 1000
+"Limestone" = 1331
+"Coal" = 2278
+"Copper Ore" = 2439
+"Caterium Ore" = 6375
+"Raw Quartz" = 6703
+"Crude Oil" = 7110
+"Bauxite" = 7196
+"Nitrogen Gas" = 10000                # No data on the wiki, this is a guess.
+"Sulfur" = 10289
+"Uranium" = 33514
+"Yellow Power Slug" = 1000000000      # Collectibles
+"Purple Power Slug" = 1000000000      # Collectibles
+"Blue Power Slug" = 1000000000        # Collectibles
+"Leaves" = 1000000000                 # Collectibles
+"Wood" = 1000000000                   # Collectibles
+"Plasma Spitter Remains" = 1000000000 # Collectibles
+"Hog Remains" = 1000000000            # Collectibles
+"Stinger Remains" = 1000000000        # Collectibles
+"Mycelia" = 1000000000                # Collectibles
+"FICSMAS Gift" = 1000000000           # Collectibles
+"Flower Petals" = 1000000000          # Collectibles
+"Hatcher Remains" = 1000000000        # Collectibles
+
+[Weights.Machines]
+# not implemented yet

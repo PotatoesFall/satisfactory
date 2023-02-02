@@ -11,7 +11,7 @@ import (
 func getAllItemWeights(w Weights) map[game.Item]*RecipeTree {
 	trees := make(map[game.Item]*RecipeTree)
 	for _, item := range allItems {
-		if weight, ok := w.Base[item]; ok {
+		if weight, ok := w.Resources[item]; ok {
 			trees[item] = &RecipeTree{
 				Item:   item,
 				Weight: weight,
@@ -28,7 +28,8 @@ func getAllItemWeights(w Weights) map[game.Item]*RecipeTree {
 				continue
 			}
 
-			var weight float64
+			weight := w.Power * recipe.Power
+
 			inputs := make([]*RecipeTree, 0, len(recipe.Ingredients))
 			for item, amount := range recipe.Ingredients {
 				// only check recipes with all known ingredients
@@ -79,23 +80,87 @@ func (rt *RecipeTree) Print(flux float64) string {
 func (rt *RecipeTree) RecipeCounts(flux float64) map[string]float64 {
 	recipes := make(map[string]float64)
 
-	getRecipeCounts(recipes, rt, flux)
+	rt.traverse(flux, 0, func(tree *RecipeTree, flux float64, _ int) {
+		if tree.Recipe == nil {
+			recipes[string(tree.Item)] += flux
+			return
+		}
+
+		recipeCount := flux / float64(tree.Recipe.Products[tree.Item]) * tree.Recipe.Duration / 60
+		recipes[tree.Recipe.Name] += recipeCount
+	})
 
 	return recipes
 }
 
-func getRecipeCounts(recipes map[string]float64, tree *RecipeTree, flux float64) {
-	if tree.Recipe == nil {
-		return
+func (rt *RecipeTree) RecipeOrder() []string {
+	seenItems := make(map[game.Item]bool)
+	var order []string
+	seenRecipes := make(map[string]bool)
+
+	recipeCounts := rt.RecipeCounts(1)
+
+	for len(order) != len(recipeCounts) {
+		newSeenItems := make(map[game.Item]bool)
+	outer:
+		for recipeName := range recipeCounts {
+			if seenRecipes[recipeName] {
+				continue
+			}
+			recipe, ok := recipesByName[recipeName]
+			if !ok { // raw resource
+				seenRecipes[recipeName] = true
+				newSeenItems[game.Item(recipeName)] = true
+				order = append(order, recipeName)
+				continue
+			}
+
+			for input := range recipe.Ingredients {
+				if !seenItems[input] { // only add if all ingredients have been added
+					continue outer
+				}
+			}
+
+			order = append(order, recipeName)
+			for product := range recipe.Products {
+				newSeenItems[product] = true
+			}
+			seenRecipes[recipeName] = true
+		}
+
+		for item := range newSeenItems {
+			seenItems[item] = true
+		}
 	}
 
-	recipeCount := flux / float64(tree.Recipe.Products[tree.Item]) * tree.Recipe.Duration / 60
-	recipes[tree.Recipe.Name] += recipeCount
+	// reverse order
+	for i, j := 0, len(order)-1; i < j; i, j = i+1, j-1 {
+		order[i], order[j] = order[j], order[i]
+	}
 
-	for _, input := range tree.Inputs {
-		ratio := float64(tree.Recipe.Ingredients[input.Item]) / float64(tree.Recipe.Products[tree.Item])
-		ingredientFlux := flux * ratio
-		getRecipeCounts(recipes, input, ingredientFlux)
+	return order
+}
+
+func (rt *RecipeTree) Power(flux float64) float64 {
+	power := 0.0
+
+	rt.traverse(flux, 0, func(tree *RecipeTree, flux float64, _ int) {
+		if tree.Recipe == nil {
+			return
+		}
+
+		power += flux / float64(tree.Recipe.Products[tree.Item]) * tree.Recipe.Power * tree.Recipe.Duration / 60
+	})
+
+	return power
+}
+
+func (rt *RecipeTree) traverse(flux float64, depth int, f func(tree *RecipeTree, flux float64, _ int)) {
+	f(rt, flux, depth)
+
+	for _, input := range rt.Inputs {
+		ratio := flux * float64(rt.Recipe.Ingredients[input.Item]) / float64(rt.Recipe.Products[rt.Item])
+		input.traverse(ratio, depth, f)
 	}
 }
 

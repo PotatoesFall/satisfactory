@@ -3,7 +3,9 @@ module github.com/PotatoesFall/satisfactory
 go 1.18
 
 require (
+	github.com/BurntSushi/toml v1.2.1
 	github.com/erikgeiser/promptkit v0.8.0
+	github.com/fbiville/markdown-table-formatter v0.3.0
 	golang.org/x/exp v0.0.0-20230131160201-f062dba9d201
 )
 
