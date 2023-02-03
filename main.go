@@ -36,7 +36,12 @@ TODO
 */
 
 type Config struct {
-	Weights Weights `toml:"Weights"`
+	Weights Weights      `toml:"Weights"`
+	Recipes RecipeConfig `toml:"Recipes"`
+}
+
+type RecipeConfig struct {
+	Disallowed []string `toml:"Disallowed"`
 }
 
 type Weights struct {
@@ -55,25 +60,41 @@ var (
 )
 
 func main() {
-	loadRecipes()
-	weights := readWeights()
+	config := readConfig()
+	loadRecipes(config.Recipes)
+
 	item, amount := getItem()
+	_, _ = item, amount
 
-	recipeTrees := getAllItemWeights(weights)
-	tree := recipeTrees[item]
+	recipeCounts := optimize(allRecipes, config.Weights, map[game.Item]float64{item: amount})
+	// recipeCounts := optimize([]*game.Recipe{
+	// 	recipesByName["Alternate: Pure Iron Ingot"],
+	// 	recipesByName["Iron Ingot"],
+	// }, config.Weights, map[game.Item]float64{"Iron Ingot": 60})
 
-	// fmt.Println(tree.Print(amount))
+	total := 0.0
+	for recipe, count := range recipeCounts {
+		power := recipe.Power * count
+		total += power
+		fmt.Println(count, recipe.Name, power, "MW")
+	}
+	fmt.Println("Total", total, "MW")
 
-	recipeOrder := tree.RecipeOrder()
-	fmt.Println(markdownTable(tree.RecipeCounts(amount), recipeOrder))
+	// recipeTrees := getAllItemWeights(weights)
+	// tree := recipeTrees[item]
 
-	fmt.Printf("Total Power: %.2f MW", tree.Power(amount))
+	// // fmt.Println(tree.Print(amount))
+
+	// recipeOrder := tree.RecipeOrder()
+	// fmt.Println(markdownTable(tree.RecipeCounts(amount), recipeOrder))
+
+	// fmt.Printf("Total Power: %.2f MW", tree.Power(amount))
 }
 
 //go:embed config.example.toml
 var defaultConfig []byte
 
-func readWeights() Weights {
+func readConfig() Config {
 	var config Config
 
 	configFile, err := os.ReadFile("config.toml")
@@ -86,7 +107,7 @@ func readWeights() Weights {
 		panic(err)
 	}
 
-	return config.Weights
+	return config
 }
 
 func markdownTable(recipeCounts map[string]float64, recipeOrder []string) string {

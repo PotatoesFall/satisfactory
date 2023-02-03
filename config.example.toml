@@ -35,3 +35,11 @@ Power = 30 # not implemented yet
 
 [Weights.Machines]
 # not implemented yet
+
+[Recipes]
+Disallowed = [
+    "Uranium Waste",
+    "Alternate: Biocoal",
+    "Alternate: Charcoal",
+    "Plutonium Waste",
+]
