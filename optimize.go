@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"math"
-	"strings"
 
 	"github.com/PotatoesFall/satisfactory/game"
 )
@@ -50,103 +49,120 @@ okay Im liking the "all recipes" approach it just has some problems:
 		- don't forget about power
 */
 
-const (
-	log = false
-	// logRecipe = ""
-	logRecipe = "iAlternate: Cast Screw"
+/*
+NOTES AFTER MUCH DOING
+- phases
+	- startup phase
+		- have a global factor that starts small and slowly increases to avoid jumps
+		- a high weight for products
+		- a low (no?) weight for ingredients (?)
+		- a low (no?) weight for power and resources
+	- balancing phase
+		- equal weight for ingredients and products (?)
+		- higher weight for resources and power
+		- steadily increase global factor ? or just ingredients and products?
+	- correction phase
+		- steadliy increase relative weight of products and ingredients to get closer to perfect math
+another idea: concurrency for performance?
+*/
 
-	filter       = false
-	initialCount = minValue
-	historyLimit = 7
+type OptimizationWeights struct {
+	Global float64
 
-	startFactor = 10000000
-	factor      = 10
-
-	rounds        = 100_000
-	startupRounds = 1000
-	// logInterval = rounds / 1000
-	logInterval = 1
-	// eliminationStart = rounds - 100 // off until last couple rounds
-	eliminationStart = rounds / 10
-
-	minValue         = 0.00000000000000000000000000000001
-	derivativeFactor = 1
-
-	productFactor    = 0.001
-	ingredientFactor = productFactor / 1000
-)
-
-func filterRecipes(recipes []*game.Recipe, requirements map[game.Item]float64) map[*game.Recipe]float64 {
-	counts := map[*game.Recipe]float64{}
-
-	if filter {
-		for req, flux := range requirements {
-			_filterRecipes(counts, recipes, req, flux, nil)
-		}
-	}
-
-	for _, recipe := range recipes {
-		if counts[recipe] == 0 {
-			counts[recipe] = initialCount
-		}
-
-		// TODO fix this issue
-		if strings.Contains(recipe.Name, "ackage") {
-			delete(counts, recipe)
-		}
-	}
-
-	return counts
+	Resources             float64 // also use for power?
+	Ingredients, Products float64
 }
 
-func _filterRecipes(counts map[*game.Recipe]float64, recipes []*game.Recipe, req game.Item, flux float64, history []*game.Recipe) {
-	if len(history) > historyLimit {
-		return
-	}
-	var relevantRecipes []*game.Recipe
+const (
+	maxRecipeAmount = 1e3
 
-outer:
-	for _, recipe := range recipes {
-		for _, hist := range history {
-			if hist == recipe {
-				continue outer
-			}
-		}
+	startupRounds    = 1_000
+	balancingRounds  = 100_000
+	correctingRounds = 10_000
+	eliminationStart = startupRounds
 
-		for product := range recipe.Products {
-			if product == req {
-				relevantRecipes = append(relevantRecipes, recipe)
-				continue
-			}
-		}
+	// computed
+	totalRounds     = startupRounds + balancingRounds + correctingRounds
+	correctingStart = startupRounds + balancingRounds + 1
+
+	// global factors
+	globalFactor      = 1e-14
+	resourceFactor    = 1.0
+	correctnessFactor = 1e10
+
+	// startup
+	startupFactor            = 1e0
+	startupResourceFactor    = 1.0
+	startupIngredientsFactor = 1e-3
+
+	// balancing
+	balancingFactor            = 1.0
+	balancingScaling           = 1e1
+	balancingResourceFactor    = 1e8
+	balancingIngredientsFactor = 1.0
+
+	// correcting
+	correctingFactor            = 1e5
+	correctingResourceFactor    = 1.0
+	correctingIngredientsFactor = 1.0
+
+	// recipe Amounts
+	initialAmount     = 0.0
+	eliminationAmount = 1e-12
+
+	// logging
+	log       = true
+	logRecipe = "Packaged Fuel"
+	// logEntries  = 1000
+	stopRound   = 10_000
+	logEntries  = 10_000
+	logInterval = totalRounds / logEntries
+)
+
+func getOptWeights(round int) OptimizationWeights {
+	w := OptimizationWeights{
+		Global:      globalFactor,
+		Resources:   resourceFactor,
+		Ingredients: correctnessFactor,
+		Products:    correctnessFactor,
 	}
 
-	recipeCount := len(relevantRecipes)
-	for _, recipe := range relevantRecipes {
-		production := float64(recipe.Products[req]) / recipe.DurationMinutes()
-		recipeRate := flux / production
-		counts[recipe] += recipeRate / float64(recipeCount)
-		newHistory := append(history, recipe)
-		for ingredient, inRatio := range recipe.Ingredients {
-			ingredientFlux := recipeRate * float64(inRatio)
-			_filterRecipes(counts, recipes, ingredient, ingredientFlux, newHistory)
-		}
+	switch {
+	case round < startupRounds:
+		// startupProgress := float64(round) / startupRounds
+		w.Global *= startupFactor
+		w.Resources *= startupResourceFactor
+		w.Ingredients *= startupIngredientsFactor
+
+	case round-startupRounds < balancingRounds:
+		// progress := float64(round-startupRounds) / balancingRounds
+		progress := math.Exp(balancingScaling * float64(round-startupRounds) / balancingRounds)
+		w.Global *= progress * balancingFactor
+		w.Resources *= balancingResourceFactor
+		w.Ingredients *= balancingIngredientsFactor
+
+	default: // correcting round
+		progress := float64(round-startupRounds) / correctingRounds
+		w.Global *= progress * correctingFactor
+		w.Resources *= correctingResourceFactor
+		w.Ingredients *= correctingIngredientsFactor
 	}
+
+	return w
 }
 
 func optimize(allRecipes []*game.Recipe, w Weights, requirements map[game.Item]float64) map[*game.Recipe]float64 {
-	recipeCounts := filterRecipes(allRecipes, requirements)
+	recipeCounts := make(map[*game.Recipe]float64)
+	for _, recipe := range allRecipes {
+		recipeCounts[recipe] = 0
+	}
 	derivatives := make(map[*game.Recipe]float64, len(recipeCounts))
 
-	for i := 0; i < rounds; i++ {
-		roundFactor := startFactor + float64(i)*factor
-		if i >= rounds*9/10 {
-			// second half --> lets go
-			roundFactor *= math.Pow(1.005, float64(i-rounds*9/10)/10)
-			// fmt.Println(roundFactor)
+	for i := 0; i < totalRounds; i++ {
+		if i > stopRound {
+			break
 		}
 
-		// fmt.Println(roundFactor)
 		fluxes := sumRecipes(recipeCounts)
 		for req, flux := range requirements {
 			fluxes[req] -= flux
@@ -157,7 +173,7 @@ func optimize(allRecipes []*game.Recipe, w Weights, requirements map[game.Item]f
 			fmt.Println("ROUND", i)
 			for _, recipe := range allRecipes {
 				count := recipeCounts[recipe]
-				if count > minValue {
+				if count > eliminationAmount {
 					fmt.Printf("\t%.5f %s\n", count, recipe.Name)
 				}
 			}
@@ -166,39 +182,28 @@ func optimize(allRecipes []*game.Recipe, w Weights, requirements map[game.Item]f
 			}
 		}
 
+		// get weights based on round
+		optWeights := getOptWeights(i)
+
 		// get all derivatives
 		for recipe := range recipeCounts {
-			// logging
-			if recipe.Name == logRecipe {
-				fmt.Print("DERIVATIVE: ", recipe.Name, " ", recipeCounts[recipe], " ")
-			}
+			derivatives[recipe] = getDerivative(w, recipe, fluxes, optWeights)
 
-			derivatives[recipe] = getDerivative(w, recipe, fluxes, roundFactor)
+			// logging
+			if log && recipe.Name == logRecipe {
+				fmt.Println(" round", i, "d/dx:", derivatives[recipe], recipe.Name, "count:", recipeCounts[recipe])
+			}
 		}
 
 		// apply derivative
 		for recipe, derivative := range derivatives {
 			count := recipeCounts[recipe]
 
-			// delta := -math.Max(
-			// 	math.Min(
-			// 		derivative*derivativeFactor/factor,
-			// 		maxDecrement/factor,
-			// 	),
-			// 	-maxIncrement/factor)
-			delta := -derivative * derivativeFactor / roundFactor
-			if i < startupRounds*2 {
-				if i < startupRounds {
-					delta *= 0.1
-				}
-				delta *= 0.1
-			}
+			newCount := math.Min(math.Max(0, count-derivative*optWeights.Global), maxRecipeAmount)
 
-			recipeCounts[recipe] = math.Max(
-				count+delta,
-				minValue)
+			recipeCounts[recipe] = newCount
 
-			if i > eliminationStart && recipeCounts[recipe] <= minValue {
+			if i > eliminationStart && newCount <= eliminationAmount {
 				delete(recipeCounts, recipe)
 			}
 		}
@@ -207,17 +212,17 @@ func optimize(allRecipes []*game.Recipe, w Weights, requirements map[game.Item]f
 	return recipeCounts
 }
 
-func getDerivative(w Weights, recipe *game.Recipe, fluxes map[game.Item]float64, factor float64) float64 {
-	powerDerivative := recipe.Power * w.Power
+func getDerivative(w Weights, recipe *game.Recipe, fluxes map[game.Item]float64, optWeight OptimizationWeights) float64 {
+	powerDerivative := recipe.Power * w.Power * optWeight.Resources
 
 	ingredientDerivative := 0.0
 	for item, count := range recipe.Ingredients {
 		if weight, ok := w.Resources[item]; ok {
-			ingredientDerivative += weight * float64(count) / recipe.DurationMinutes()
+			ingredientDerivative += optWeight.Resources * weight * float64(count) / recipe.DurationMinutes()
 			continue
 		}
 		if flux := fluxes[item]; flux < 0 {
-			ingredientDerivative += ingredientFactor * (-flux) * float64(count) / recipe.DurationMinutes() * factor
+			ingredientDerivative += optWeight.Ingredients * (-flux) * float64(count) / recipe.DurationMinutes()
 		}
 	}
 
@@ -225,18 +230,18 @@ func getDerivative(w Weights, recipe *game.Recipe, fluxes map[game.Item]float64,
 	for item, count := range recipe.Products {
 		if weight, ok := w.Resources[item]; ok {
 			if fluxes[item] <= 0 {
-				productDerivative -= weight * float64(count) / recipe.DurationMinutes()
+				productDerivative -= optWeight.Resources * weight * float64(count) / recipe.DurationMinutes()
 			}
 			continue
 		}
 
 		if flux := fluxes[item]; flux < 0 {
-			productDerivative -= productFactor * (-flux) * float64(count) / recipe.DurationMinutes() * factor
+			productDerivative -= optWeight.Products * (-flux) * float64(count) / recipe.DurationMinutes()
 		}
 	}
 
-	if recipe.Name == logRecipe {
-		fmt.Println("power", powerDerivative, "ingredient", ingredientDerivative, "product", productDerivative)
+	if log && recipe.Name == logRecipe {
+		fmt.Print("DERIVATIVE ", "power: ", powerDerivative, " ingredient: ", ingredientDerivative, " product: ", productDerivative)
 	}
 
 	return powerDerivative + ingredientDerivative + productDerivative
@@ -246,7 +251,7 @@ func sumRecipes(recipeCounts map[*game.Recipe]float64) (fluxes map[game.Item]flo
 	fluxes = make(map[game.Item]float64, len(allItems))
 
 	for recipe, recipeAmount := range recipeCounts {
-		if recipeAmount <= minValue {
+		if recipeAmount <= eliminationAmount {
 			continue
 		}
 		for input, amount := range recipe.Ingredients {
